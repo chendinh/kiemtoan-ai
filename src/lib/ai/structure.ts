@@ -7,7 +7,7 @@
 // - Bố cục đã kiểm chứng được nhớ theo "chữ ký" của bảng (các nhãn tiêu đề) để lần sau không gọi lại AI.
 
 import { z } from "zod";
-import { ALLOWED_FIELDS, EXTRACTABLE_KINDS, REQUIRED_FIELDS } from "@/lib/shop/detect";
+import { ALLOWED_FIELDS, EXTRACTABLE_KINDS, REQUIRED_FIELDS, resolveLots } from "@/lib/shop/detect";
 import type { Grid } from "@/lib/shop/grid";
 import type { Layout, ShopTableKind, UnknownTab } from "@/lib/shop/types";
 import { KIND_LABELS } from "@/lib/shop/types";
@@ -340,8 +340,30 @@ export async function proposeLayouts(
         outcomes.set(b.index, { sheet, status: "rejected", message: "AI đề xuất hàng tiêu đề không hợp lệ.", confidence: p.confidence });
         continue;
       }
-      const proposed: Layout = { kind: p.kind as ShopTableKind, headerRow: p.headerRow ?? -1, cols: p.cols, via: "ai" };
-      const v = verifyLayout(b.grid, proposed);
+      // Tab không có hàng tiêu đề (thường là bảng nháp: chỉ có mã và số) thì AI chỉ có thể đoán loại bảng theo hình dạng số liệu.
+      // Kiểm chứng kiểu cột không phân biệt được "bảng lô" với "bảng tính nháp", nên không nhận đề xuất này để khỏi lẫn vào kết quả.
+      if (p.headerRow === null) {
+        outcomes.set(b.index, {
+          sheet,
+          status: "rejected",
+          kind: p.kind as ShopTableKind,
+          message: `AI đề xuất "${KIND_LABELS[p.kind as ShopTableKind]}" nhưng tab không có hàng tiêu đề để làm căn cứ (thường là bảng nháp), nên không nhận.`,
+          confidence: p.confidence,
+        });
+        continue;
+      }
+      let proposed: Layout = { kind: p.kind as ShopTableKind, headerRow: p.headerRow ?? -1, cols: p.cols, via: "ai" };
+      let v = verifyLayout(b.grid, proposed);
+      // Bảng lô: cột mã KG và đợt không có tiêu đề riêng ở hàng tiêu đề (chúng đứng ngay trước "SL sp ký gửi"), nên AI hay chỉ sai hai cột này.
+      // Khi AI đã nhận đúng loại và cột "SL sp ký gửi", thử lại với vị trí theo quy ước của bảng lô. Bố cục thử lại vẫn phải qua kiểm chứng.
+      if (!v.ok && proposed.kind === "lots" && proposed.cols.qtyIn !== undefined && proposed.headerRow >= 0) {
+        const retry: Layout = { ...proposed, cols: resolveLots(b.grid, proposed.headerRow, proposed.cols) };
+        const rv = verifyLayout(b.grid, retry);
+        if (rv.ok) {
+          proposed = retry;
+          v = rv;
+        }
+      }
       if (!v.ok || !v.layout) {
         outcomes.set(b.index, {
           sheet,

@@ -216,11 +216,15 @@ export function parseWorkbook(buf: Buffer, ctx: TableContext): ExcelResult {
     if (stmt) out.statements.push(stmt);
 
     // Trong sổ sách shop, tab lạ thường là bảng nháp/phụ: chỉ đọc khi có tiêu đề rõ, không đoán cột theo nội dung.
-    const result = processTable(rows, ctx, {
-      locate: (i) => ({ sheet: name, row: i + 1 }),
-      merges,
-      allowInfer: !isShopBook,
-    });
+    // Trong sổ shop, tab đủ lớn mà không khớp bố cục nào thì luôn là "tab lạ" (để AI nếu bật có thể đề xuất bố cục), KHÔNG đọc
+    // bằng bộ đọc giao dịch chung: bộ này có thể bắt nhầm một cột (ví dụ tiêu đề có chữ "số tiền") và cho ra các dòng sai mà không cảnh báo.
+    const result = isShopBook && nonEmptyRows >= 5
+      ? null
+      : processTable(rows, ctx, {
+          locate: (i) => ({ sheet: name, row: i + 1 }),
+          merges,
+          allowInfer: !isShopBook,
+        });
     if (!result) {
       if (nonEmptyRows >= 5) {
         // Tab không đọc được: lập hồ sơ cột để lớp AI (nếu bật) có thể đề xuất bố cục. Trong sổ shop thì liệt kê là "tab lạ";

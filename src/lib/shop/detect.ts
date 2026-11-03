@@ -155,7 +155,7 @@ function looksLikeGaOverview(g: Grid): boolean {
  * Hàng tiêu đề của bảng ký gửi chỉ có tên cột số liệu; cột mã KG và đợt luôn đứng ngay trước "SL sp ký gửi".
  * Nhãn "MÃ KG" (nếu có) xác nhận lại vị trí cột mã.
  */
-function resolveLots(g: Grid, headerRow: number, cols: Record<string, number>): Record<string, number> {
+export function resolveLots(g: Grid, headerRow: number, cols: Record<string, number>): Record<string, number> {
   const out = { ...cols };
   let code = out.qtyIn - 2;
   for (let r = headerRow; r <= Math.min(headerRow + 3, g.r1); r++) {

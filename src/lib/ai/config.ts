@@ -37,7 +37,7 @@ export function getAiConfig(): AiConfig | null {
     apiKey,
     model,
     baseUrl,
-    timeoutMs: Number.isFinite(timeout) && timeout >= 5_000 ? Math.min(timeout, 600_000) : 120_000,
+    timeoutMs: Number.isFinite(timeout) && timeout >= 5_000 ? Math.min(timeout, 600_000) : 180_000,
   };
 }
 

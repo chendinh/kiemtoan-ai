@@ -77,6 +77,8 @@ export default function AuditApp() {
   const [useAiStructure, setUseAiStructure] = useState(false);
   const [ai, setAi] = useState<AiState>({ state: "idle" });
   const [loadingSample, setLoadingSample] = useState(false);
+  /** Đang dùng bộ dữ liệu mẫu (đã tắt chế độ shop). Thêm file thật hoặc xóa hết file mẫu thì phải bật lại chế độ shop. */
+  const [sampleActive, setSampleActive] = useState(false);
   const keyCounter = useRef(0);
   const resultsRef = useRef<HTMLDivElement | null>(null);
   /** AI nhận diện bảng lạ chỉ chạy khi đã cấu hình khóa, người dùng bật, và đang ở chế độ shop. */
@@ -102,8 +104,16 @@ export default function AuditApp() {
   }, [result]);
 
   /** `sourceOf` cho biết file nào được nhập từ link Google Sheets (trả mã sheet); file như vậy được làm mới khi nhập lại. */
-  const addFiles = (files: File[], sourceOf?: (f: File) => string | undefined) => {
+  const isSampleFile = (name: string) => SAMPLES.some((s) => s.name === name);
+  /** Quay lại kiểm tiền của shop sau khi dùng dữ liệu mẫu: chỉ trả lại ba mục mà nút “Xem ví dụ” đã đổi, không đụng các cài đặt khác. */
+  const leaveSampleMode = () => {
+    setSampleActive(false);
+    setForm((f) => ({ ...f, periodFrom: DEFAULT_FORM.periodFrom, periodTo: DEFAULT_FORM.periodTo, shopMode: DEFAULT_FORM.shopMode }));
+  };
+  const addFiles = (files: File[], sourceOf?: (f: File) => string | undefined, fromSample = false) => {
     setNotice(null);
+    const leavingSample = !fromSample && sampleActive;
+    if (leavingSample) leaveSampleMode();
     const problems: string[] = [];
     const accepted: File[] = [];
     for (const f of files) {
@@ -113,7 +123,7 @@ export default function AuditApp() {
       else accepted.push(f);
     }
     setItems((prev) => {
-      const next = [...prev];
+      const next = leavingSample ? prev.filter((x) => !isSampleFile(x.file.name)) : [...prev];
       for (const f of accepted) {
         const sourceId = sourceOf?.(f);
         const existing = sourceId ? next.findIndex((x) => x.sourceId === sourceId) : -1;
@@ -132,6 +142,7 @@ export default function AuditApp() {
       return next;
     });
     if (problems.length > 0) setNotice({ tone: "warn", text: problems.join(" ") });
+    else if (leavingSample) setNotice({ tone: "info", text: "Đã bỏ 3 file mẫu, bật lại chế độ shop và kỳ kiểm từ 01/01/2026." });
     setResult(null);
     setAi({ state: "idle" });
     setRolesDirty(false);
@@ -150,12 +161,13 @@ export default function AuditApp() {
       );
       setItems([]);
       keyCounter.current = 0;
-      addFiles(files);
+      addFiles(files, undefined, true);
+      setSampleActive(true);
       // Dữ liệu mẫu là ví dụ chung (không phải của shop): tắt chế độ shop để các luật thống kê chạy và thấy được các bất thường cài sẵn.
       setForm((f) => ({ ...f, periodFrom: "2025-10-01", periodTo: "2025-10-31", shopMode: false }));
       setNotice({
         tone: "info",
-        text: "Đã nạp 3 file mẫu (dữ liệu giả lập, không phải của shop: sổ tiền gửi, sao kê ngân hàng, bảng kê hóa đơn tháng 10/2025), đặt kỳ kiểm toán 01/10/2025 - 31/10/2025 và tắt chế độ shop để các luật chung chạy. Dữ liệu được cài sẵn nhiều loại bất thường để bạn xem hệ thống phát hiện thế nào. Bấm “Phân tích” để chạy; muốn quay lại kiểm tiền của shop, mở phần Cài đặt và bấm “Khôi phục mặc định”.",
+        text: "Đã nạp 3 file mẫu (dữ liệu giả lập, không phải của shop: sổ tiền gửi, sao kê ngân hàng, bảng kê hóa đơn tháng 10/2025), đặt kỳ kiểm toán 01/10/2025 - 31/10/2025 và tắt chế độ shop để các luật chung chạy. Dữ liệu được cài sẵn nhiều loại bất thường để bạn xem hệ thống phát hiện thế nào. Bấm “Phân tích” để chạy; muốn quay lại kiểm tiền của shop, chỉ cần thêm file thật của shop (file mẫu sẽ tự được bỏ và chế độ shop tự bật lại), hoặc bấm “Khôi phục mặc định” trong phần Cài đặt.",
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Không tải được dữ liệu mẫu.");
@@ -258,7 +270,9 @@ export default function AuditApp() {
             items={items}
             onAdd={addFiles}
             onRemove={(key) => {
-              setItems((prev) => prev.filter((it) => it.key !== key));
+              const rest = items.filter((it) => it.key !== key);
+              setItems(rest);
+              if (sampleActive && !rest.some((it) => isSampleFile(it.file.name))) leaveSampleMode();
               setResult(null);
               setAi({ state: "idle" });
             }}
@@ -299,7 +313,10 @@ export default function AuditApp() {
                 useAiStructure={useAiStructure}
                 onUseAiStructure={setUseAiStructure}
               />
-              <button type="button" className={`${buttonSecondary} mt-4`} onClick={() => setForm(DEFAULT_FORM)} disabled={busy}>
+              <button type="button" className={`${buttonSecondary} mt-4`} onClick={() => {
+                  setForm(DEFAULT_FORM);
+                  setSampleActive(false);
+                }} disabled={busy}>
                 Khôi phục mặc định
               </button>
             </div>
